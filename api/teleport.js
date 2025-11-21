@@ -4,7 +4,7 @@ let teleportQueue = [];
 // Función para limpiar datos expirados
 function cleanExpiredData() {
     const now = Date.now();
-    const expirationTime = 9000; // 3 segundos
+    const expirationTime = 20000; // 3 segundos
     
     // Mantener solo los datos que no han expirado
     teleportQueue = teleportQueue.filter(item => 
