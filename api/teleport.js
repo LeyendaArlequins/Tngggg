@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       return res.status(200).json({
         success: true,
-        message: '✅ API de Auto-Join funcionando',
+        message: ' API de Auto-Join funcionando',
         activeTeleports: Object.keys(teleportData).length,
         timestamp: new Date().toISOString()
       });
