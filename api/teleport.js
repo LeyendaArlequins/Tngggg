@@ -1,17 +1,20 @@
-// api/teleport.js - VERSIÓN ACTUALIZADA
+// api/teleport.js - Compatible con Node.js 22
 let teleportData = {};
 
 module.exports = async (req, res) => {
+  // Configurar CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
+  // Manejar preflight OPTIONS
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
+    // Parsear body
     let body = {};
     if (req.body) {
       body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -20,7 +23,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       return res.status(200).json({
         success: true,
-        message: ' API de Auto-Join funcionando',
+        message: '✅ API de Auto-Join funcionando',
         activeTeleports: Object.keys(teleportData).length,
         timestamp: new Date().toISOString()
       });
@@ -54,7 +57,7 @@ module.exports = async (req, res) => {
         });
       }
 
-      // Resto del código para otras acciones...
+      // Para Roblox buscando datos de teleport
       if (action === "getTeleportData") {
         const userData = teleportData[userId] || teleportData['auto-join'];
         if (userData && userData.placeId && userData.gameInstanceId) {
@@ -73,16 +76,21 @@ module.exports = async (req, res) => {
           });
         }
       }
-      else if (action === "clearTeleportData") {
-        delete teleportData[userId];
+
+      // Limpiar datos después del teleport
+      if (action === "clearTeleportData") {
+        if (userId) {
+          delete teleportData[userId];
+        }
         delete teleportData['auto-join'];
         return res.status(200).json({
           success: true,
           message: 'Datos limpiados'
         });
       }
-      else if (placeId && gameInstanceId) {
-        // De Discord (como antes)
+
+      // Si viene de Discord con placeId y gameInstanceId
+      if (placeId && gameInstanceId) {
         const targetUserId = userId || 'default-user';
         
         teleportData[targetUserId] = {
@@ -94,6 +102,12 @@ module.exports = async (req, res) => {
             userId: body.discordUserId
           } : null
         };
+
+        console.log('📨 Datos guardados de Discord:', { 
+          placeId, 
+          gameInstanceId,
+          user: targetUserId 
+        });
 
         return res.status(200).json({
           success: true,
