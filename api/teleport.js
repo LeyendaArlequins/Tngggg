@@ -1,141 +1,165 @@
-// api/teleport.js - Compatible con Node.js 22
-let teleportData = {};
+// api/teleport.js - CON SISTEMA DE COLA
+let teleportQueue = [];
+
+// Función para limpiar datos expirados
+function cleanExpiredData() {
+    const now = Date.now();
+    const expirationTime = 3000; // 3 segundos
+    
+    // Mantener solo los datos que no han expirado
+    teleportQueue = teleportQueue.filter(item => 
+        item.timestamp && (now - item.timestamp) <= expirationTime
+    );
+}
+
+// Limpiar cada segundo
+setInterval(cleanExpiredData, 1000);
 
 module.exports = async (req, res) => {
-  // Configurar CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+    // Configurar CORS
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-  // Manejar preflight OPTIONS
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  try {
-    // Parsear body
-    let body = {};
-    if (req.body) {
-      body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
     }
 
-    if (req.method === 'GET') {
-      return res.status(200).json({
-        success: true,
-        message: '✅ API de Auto-Join funcionando',
-        activeTeleports: Object.keys(teleportData).length,
-        timestamp: new Date().toISOString()
-      });
-    }
+    try {
+        let body = {};
+        if (req.body) {
+            body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        }
 
-    if (req.method === 'POST') {
-      const { action, placeId, gameInstanceId, userId, animalData, source } = body;
+        if (req.method === 'GET') {
+            cleanExpiredData();
+            return res.status(200).json({
+                success: true,
+                message: '✅ API con sistema de cola',
+                queueLength: teleportQueue.length,
+                activeServers: teleportQueue.map(item => ({
+                    placeId: item.placeId,
+                    gameInstanceId: item.gameInstanceId,
+                    expiresIn: Math.max(0, 3000 - (Date.now() - item.timestamp)) + 'ms'
+                })),
+                timestamp: new Date().toISOString()
+            });
+        }
 
-      // Si viene del script de Roblox (discreto)
-      if (source === "roblox_script" && placeId && gameInstanceId) {
-        console.log('🦄 Datos recibidos de Roblox:', { 
-          placeId, 
-          gameInstanceId,
-          animal: animalData?.displayName,
-          value: animalData?.value
-        });
+        if (req.method === 'POST') {
+            const { action, placeId, gameInstanceId, userId, animalData, source } = body;
 
-        // Guardar para auto-join
-        teleportData['auto-join'] = {
-          placeId: placeId,
-          gameInstanceId: gameInstanceId,
-          animalData: animalData,
-          timestamp: new Date().toISOString(),
-          source: 'roblox_direct'
-        };
+            cleanExpiredData();
 
-        return res.status(200).json({
-          success: true,
-          message: '✅ Datos recibidos discretamente',
-          received: true
-        });
-      }
+            // Agregar nuevo servidor a la cola
+            if (source === "roblox_script" && placeId && gameInstanceId) {
+                const newItem = {
+                    placeId: placeId,
+                    gameInstanceId: gameInstanceId,
+                    animalData: animalData,
+                    timestamp: Date.now(),
+                    source: 'roblox_direct',
+                    id: `${placeId}-${gameInstanceId}-${Date.now()}`
+                };
 
-      // Para Roblox buscando datos de teleport
-      if (action === "getTeleportData") {
-        const userData = teleportData[userId] || teleportData['auto-join'];
-        if (userData && userData.placeId && userData.gameInstanceId) {
-          return res.status(200).json({
-            success: true,
-            data: {
-              placeId: userData.placeId,
-              gameInstanceId: userData.gameInstanceId,
-              animalData: userData.animalData
+                // Verificar si ya existe en la cola
+                const exists = teleportQueue.some(item => 
+                    item.placeId === placeId && item.gameInstanceId === gameInstanceId
+                );
+
+                if (!exists) {
+                    teleportQueue.push(newItem);
+                    console.log('🦄 Nuevo servidor en cola:', { 
+                        placeId, 
+                        gameInstanceId,
+                        animal: animalData?.displayName,
+                        queuePosition: teleportQueue.length
+                    });
+                }
+
+                return res.status(200).json({
+                    success: true,
+                    message: '✅ Servidor agregado a la cola',
+                    queueLength: teleportQueue.length,
+                    added: !exists
+                });
             }
-          });
-        } else {
-          return res.status(200).json({
-            success: true,
-            data: null
-          });
+
+            // Obtener el PRIMER servidor de la cola (sistema FIFO)
+            if (action === "getTeleportData") {
+                if (teleportQueue.length > 0) {
+                    const firstItem = teleportQueue[0];
+                    const timeLeft = Math.max(0, 3000 - (Date.now() - firstItem.timestamp));
+                    
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            placeId: firstItem.placeId,
+                            gameInstanceId: firstItem.gameInstanceId,
+                            animalData: firstItem.animalData,
+                            timeLeft: timeLeft,
+                            queuePosition: 1,
+                            queueLength: teleportQueue.length
+                        }
+                    });
+                } else {
+                    return res.status(200).json({
+                        success: true,
+                        data: null,
+                        message: 'No hay servidores en la cola'
+                    });
+                }
+            }
+
+            // Remover el PRIMER servidor de la cola (después del teleport)
+            if (action === "removeFirstFromQueue") {
+                if (teleportQueue.length > 0) {
+                    const removed = teleportQueue.shift();
+                    console.log('✅ Servidor removido de la cola:', removed.gameInstanceId);
+                    console.log('📊 Cola restante:', teleportQueue.length);
+                    
+                    return res.status(200).json({
+                        success: true,
+                        message: 'Servidor removido de la cola',
+                        removed: removed.gameInstanceId,
+                        queueLength: teleportQueue.length
+                    });
+                }
+                
+                return res.status(200).json({
+                    success: true,
+                    message: 'Cola vacía'
+                });
+            }
+
+            // Limpiar TODA la cola
+            if (action === "clearQueue") {
+                const count = teleportQueue.length;
+                teleportQueue = [];
+                console.log('💥 Cola limpiada:', count + ' servidores');
+                return res.status(200).json({
+                    success: true,
+                    message: `Cola limpiada (${count} servidores)`
+                });
+            }
+
+            return res.status(400).json({
+                success: false,
+                error: 'Datos incompletos'
+            });
         }
-      }
 
-      // Limpiar datos después del teleport
-      if (action === "clearTeleportData") {
-        if (userId) {
-          delete teleportData[userId];
-        }
-        delete teleportData['auto-join'];
-        return res.status(200).json({
-          success: true,
-          message: 'Datos limpiados'
-        });
-      }
-
-      // Si viene de Discord con placeId y gameInstanceId
-      if (placeId && gameInstanceId) {
-        const targetUserId = userId || 'default-user';
-        
-        teleportData[targetUserId] = {
-          placeId: placeId,
-          gameInstanceId: gameInstanceId,
-          timestamp: new Date().toISOString(),
-          discordData: body.discordUsername ? {
-            username: body.discordUsername,
-            userId: body.discordUserId
-          } : null
-        };
-
-        console.log('📨 Datos guardados de Discord:', { 
-          placeId, 
-          gameInstanceId,
-          user: targetUserId 
+        return res.status(405).json({
+            success: false,
+            error: 'Método no permitido'
         });
 
-        return res.status(200).json({
-          success: true,
-          message: '✅ Datos guardados para auto-join',
-          data: {
-            placeId: placeId,
-            gameInstanceId: gameInstanceId,
-            userId: targetUserId
-          }
+    } catch (error) {
+        console.error('❌ Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Error interno: ' + error.message
         });
-      }
-
-      return res.status(400).json({
-        success: false,
-        error: 'Datos incompletos'
-      });
     }
-
-    return res.status(405).json({
-      success: false,
-      error: 'Método no permitido'
-    });
-
-  } catch (error) {
-    console.error('❌ Error:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Error interno: ' + error.message
-    });
-  }
 };
