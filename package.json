@@ -1,6 +1,10 @@
 {
-  "name": "roblox-autojoin",
+  "name": "roblox-autojoin-api",
   "version": "1.0.0",
+  "description": "API para auto-join de Roblox",
+  "scripts": {
+    "dev": "vercel dev"
+  },
   "dependencies": {
     "axios": "^1.6.0"
   }
