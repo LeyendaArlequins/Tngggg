@@ -1,9 +1,7 @@
-// api/teleport.js - VERSIÓN MEJORADA
-// Simulamos una "base de datos" en memoria (para empezar)
+// api/teleport.js - VERSIÓN ACTUALIZADA
 let teleportData = {};
 
 module.exports = async (req, res) => {
-  // Configurar CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -14,7 +12,6 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Parsear body
     let body = {};
     if (req.body) {
       body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -30,17 +27,43 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
-      const { action, placeId, gameInstanceId, userId } = body;
+      const { action, placeId, gameInstanceId, userId, animalData, source } = body;
 
+      // Si viene del script de Roblox (discreto)
+      if (source === "roblox_script" && placeId && gameInstanceId) {
+        console.log('🦄 Datos recibidos de Roblox:', { 
+          placeId, 
+          gameInstanceId,
+          animal: animalData?.displayName,
+          value: animalData?.value
+        });
+
+        // Guardar para auto-join
+        teleportData['auto-join'] = {
+          placeId: placeId,
+          gameInstanceId: gameInstanceId,
+          animalData: animalData,
+          timestamp: new Date().toISOString(),
+          source: 'roblox_direct'
+        };
+
+        return res.status(200).json({
+          success: true,
+          message: '✅ Datos recibidos discretamente',
+          received: true
+        });
+      }
+
+      // Resto del código para otras acciones...
       if (action === "getTeleportData") {
-        // Roblox pide datos de teleport
-        const userData = teleportData[userId];
+        const userData = teleportData[userId] || teleportData['auto-join'];
         if (userData && userData.placeId && userData.gameInstanceId) {
           return res.status(200).json({
             success: true,
             data: {
               placeId: userData.placeId,
-              gameInstanceId: userData.gameInstanceId
+              gameInstanceId: userData.gameInstanceId,
+              animalData: userData.animalData
             }
           });
         } else {
@@ -51,15 +74,15 @@ module.exports = async (req, res) => {
         }
       }
       else if (action === "clearTeleportData") {
-        // Limpiar datos después del teleport
         delete teleportData[userId];
+        delete teleportData['auto-join'];
         return res.status(200).json({
           success: true,
           message: 'Datos limpiados'
         });
       }
       else if (placeId && gameInstanceId) {
-        // Discord envía nuevos datos
+        // De Discord (como antes)
         const targetUserId = userId || 'default-user';
         
         teleportData[targetUserId] = {
@@ -72,9 +95,6 @@ module.exports = async (req, res) => {
           } : null
         };
 
-        console.log('💾 Datos guardados para usuario:', targetUserId);
-        console.log('📋 Datos:', teleportData[targetUserId]);
-
         return res.status(200).json({
           success: true,
           message: '✅ Datos guardados para auto-join',
@@ -85,12 +105,11 @@ module.exports = async (req, res) => {
           }
         });
       }
-      else {
-        return res.status(400).json({
-          success: false,
-          error: 'Datos incompletos'
-        });
-      }
+
+      return res.status(400).json({
+        success: false,
+        error: 'Datos incompletos'
+      });
     }
 
     return res.status(405).json({
