@@ -1,10 +1,10 @@
-// api/teleport.js - CON SISTEMA DE COLA
+// api/teleport.js - CORREGIDO PARA ENVIAR DATOS COMPLETOS
 let teleportQueue = [];
 
 // Función para limpiar datos expirados
 function cleanExpiredData() {
     const now = Date.now();
-    const expirationTime = 20000; // 3 segundos
+    const expirationTime = 20000; // 20 segundos
     
     // Mantener solo los datos que no han expirado
     teleportQueue = teleportQueue.filter(item => 
@@ -34,15 +34,26 @@ module.exports = async (req, res) => {
 
         if (req.method === 'GET') {
             cleanExpiredData();
+            
+            // ✅ CORREGIDO: Enviar TODOS los datos incluyendo animalData completo
+            const activeServers = teleportQueue.map(item => ({
+                placeId: item.placeId,
+                gameInstanceId: item.gameInstanceId,
+                animalData: item.animalData || { // ✅ Asegurar que animalData se envíe completo
+                    displayName: "Desconocido",
+                    value: 0,
+                    generation: "?",
+                    rarity: "?"
+                },
+                expiresIn: Math.max(0, 20000 - (Date.now() - item.timestamp)) + 'ms',
+                timestamp: item.timestamp
+            }));
+
             return res.status(200).json({
                 success: true,
-                message: '✅ API con sistema de cola',
+                message: '✅ API con sistema de cola - DATOS COMPLETOS',
                 queueLength: teleportQueue.length,
-                activeServers: teleportQueue.map(item => ({
-                    placeId: item.placeId,
-                    gameInstanceId: item.gameInstanceId,
-                    expiresIn: Math.max(0, 3000 - (Date.now() - item.timestamp)) + 'ms'
-                })),
+                activeServers: activeServers, // ✅ Ahora incluye animalData completo
                 timestamp: new Date().toISOString()
             });
         }
@@ -57,7 +68,12 @@ module.exports = async (req, res) => {
                 const newItem = {
                     placeId: placeId,
                     gameInstanceId: gameInstanceId,
-                    animalData: animalData,
+                    animalData: animalData || { // ✅ Asegurar estructura completa
+                        displayName: animalData?.displayName || "Desconocido",
+                        value: animalData?.value || 0,
+                        generation: animalData?.generation || "?", // ✅ Generation incluida
+                        rarity: animalData?.rarity || "?"
+                    },
                     timestamp: Date.now(),
                     source: 'roblox_direct',
                     id: `${placeId}-${gameInstanceId}-${Date.now()}`
@@ -74,6 +90,9 @@ module.exports = async (req, res) => {
                         placeId, 
                         gameInstanceId,
                         animal: animalData?.displayName,
+                        generation: animalData?.generation, // ✅ Log de generation
+                        value: animalData?.value,
+                        rarity: animalData?.rarity,
                         queuePosition: teleportQueue.length
                     });
                 }
@@ -90,14 +109,14 @@ module.exports = async (req, res) => {
             if (action === "getTeleportData") {
                 if (teleportQueue.length > 0) {
                     const firstItem = teleportQueue[0];
-                    const timeLeft = Math.max(0, 3000 - (Date.now() - firstItem.timestamp));
+                    const timeLeft = Math.max(0, 20000 - (Date.now() - firstItem.timestamp));
                     
                     return res.status(200).json({
                         success: true,
                         data: {
                             placeId: firstItem.placeId,
                             gameInstanceId: firstItem.gameInstanceId,
-                            animalData: firstItem.animalData,
+                            animalData: firstItem.animalData, // ✅ Incluye generation
                             timeLeft: timeLeft,
                             queuePosition: 1,
                             queueLength: teleportQueue.length
@@ -116,7 +135,11 @@ module.exports = async (req, res) => {
             if (action === "removeFirstFromQueue") {
                 if (teleportQueue.length > 0) {
                     const removed = teleportQueue.shift();
-                    console.log('✅ Servidor removido de la cola:', removed.gameInstanceId);
+                    console.log('✅ Servidor removido de la cola:', {
+                        gameInstanceId: removed.gameInstanceId,
+                        animal: removed.animalData?.displayName,
+                        generation: removed.animalData?.generation // ✅ Log de generation
+                    });
                     console.log('📊 Cola restante:', teleportQueue.length);
                     
                     return res.status(200).json({
