@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { Client, GatewayIntentBits } from 'discord.js';
-
+import { createClient } from '@supabase/supabase-js';
 // Configuración
 const supabase = createClient(
   process.env.SUPABASE_URL,
