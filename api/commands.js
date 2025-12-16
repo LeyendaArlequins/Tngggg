@@ -1,5 +1,5 @@
+import { Client, GatewayIntentBits } from 'discord.js';
 import { createClient } from '@supabase/supabase-js';
-import { InteractionType, InteractionResponseType } from 'discord-interactions';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
